@@ -208,3 +208,53 @@ else:
     for idx, p in enumerate(perm_strings):
         with cols[idx % 3]:
             st.info(f"**{p}**")
+# ==========================================
+# 6. BACKTESTING ENGINE (Append at the bottom)
+# ==========================================
+st.divider()
+st.subheader("🧪 Strategy Backtesting")
+st.markdown("Test how the Single Board Sniper would have performed on the last 10 draws.")
+
+if st.button("Run Backtest (Last 10 Draws)", use_container_width=True):
+    with st.spinner("Simulating mathematical sieve..."):
+        test_results = []
+        test_range = 10
+        
+        # Ensure we have enough data to train
+        if len(df) > test_range + 10:
+            for i in range(test_range):
+                # 1. Split data (Train on past, Test on current)
+                train_data = df.iloc[i+1:].copy()
+                actual_draw = tuple(df.iloc[i][["Pos 1", "Pos 2", "Pos 3"]].values)
+                actual_str = "".join(map(str, actual_draw))
+                
+                # 2. Run the exact same Engine on Training Data
+                picks, _, _ = generate_single_board_pick(train_data, 100)
+                
+                # 3. Compare
+                if not picks:
+                    status = "No Play (Filters)"
+                    match = 0
+                else:
+                    predicted = picks[0]
+                    match = sum(1 for p, a in zip(predicted, actual_draw) if p == a)
+                    if match == 3: status = "🎯 JACKPOT (3/3)"
+                    elif match == 2: status = "✅ 2/3 Match"
+                    elif match == 1: status = "🟡 1/3 Match"
+                    else: status = "❌ Missed"
+                    
+                test_results.append({
+                    "Draw": f"Past -{i+1}",
+                    "Actual": actual_str,
+                    "Sniper Pick": "".join(map(str, picks[0])) if picks else "-",
+                    "Result": status
+                })
+            
+            # Display Results
+            res_df = pd.DataFrame(test_results)
+            st.dataframe(res_df, use_container_width=True, hide_index=True)
+            
+            hits = len(res_df[res_df["Result"].str.contains("Match|JACKPOT")])
+            st.info(f"**Performance:** The Sniper hit 1 or more exact positions in **{hits}/10** past draws.")
+        else:
+            st.warning("Not enough data to run backtest.")
