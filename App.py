@@ -30,13 +30,14 @@ st.markdown("""
     
     .signal-play { background-color: #2ECC71; color: white; text-align: center; padding: 15px; border-radius: 10px; font-size: 24px; font-weight: bold; margin-top: 20px; box-shadow: 0 0 20px rgba(46, 204, 113, 0.4); }
     .signal-noplay { background-color: #E74C3C; color: white; text-align: center; padding: 15px; border-radius: 10px; font-size: 24px; font-weight: bold; margin-top: 20px; box-shadow: 0 0 20px rgba(231, 76, 60, 0.4); }
+    
+    .box-play { background-color: #1A2436; border: 1px dashed #4A90E2; border-radius: 10px; padding: 15px; margin-top: 15px; text-align: center; }
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. INITIALIZE MEMORY (Session State)
+# 2. INITIALIZE MEMORY
 # ==========================================
-# We load the base data first, then allow updates.
 if 'lottery_data' not in st.session_state:
     st.session_state.lottery_data = """100,156,253,800,173,510,699,621,556,365,209,432,920,748,769,001,938,272,623,616,105,009,938,328,647,736,379,832,602,766,490,287,588,723,406,209,058,102,565,115,608,008,205,663,685,118,011,835,824,400,051,410,984,812,624,386,040,758,241,644,799,949,743,871,522,390,547,967,047,746,926,078,487,511,226,883,293,909,782,876,988,678,122,434,731,702,293,879,563,051,053,102,649,160,197,317,511,993,736,291,178,097,139,525,162,387,868,258,331,467,366,698,097,346,562,746,373,980,737,091,859,342,066,552"""
 
@@ -139,21 +140,54 @@ def generate_single_pick(df, filtered_pool, stats_dict, least_pairs):
     scored_tickets = sorted(scored_tickets, key=lambda x: x["score"], reverse=True)
     return scored_tickets[:1]
 
+def run_backtest(df, test_range=10):
+    results = []
+    # We can only test up to available data minus some training size
+    max_tests = min(test_range, len(df) - 10)
+    
+    for i in range(max_tests):
+        # Train on data AFTER the test draw
+        train_data = df.iloc[i+1:].copy()
+        actual_draw = tuple(df.iloc[i][["Pos 1", "Pos 2", "Pos 3"]].values)
+        actual_str = "".join(map(str, actual_draw))
+        
+        pool, stats = calculate_analytics(train_data, 100)
+        lp = get_least_pairs(train_data, 100)
+        picks = generate_single_pick(train_data, pool, stats, lp)
+        
+        if not picks:
+            status = "No Play"
+            match = 0
+        else:
+            predicted = picks[0]["combo"]
+            match = sum(1 for p, a in zip(predicted, actual_draw) if p == a)
+            if match == 3: status = "🎯 JACKPOT"
+            elif match == 2: status = "✅ 2/3 Match"
+            elif match == 1: status = "🟡 1/3 Match"
+            else: status = "❌ Missed"
+            
+        results.append({
+            "Draw": f"Past -{i+1}",
+            "Actual": actual_str,
+            "Sniper Pick": "".join(map(str, picks[0]["combo"])) if picks else "-",
+            "Result": status
+        })
+    return pd.DataFrame(results)
+
 # ==========================================
-# 4. SIDEBAR (Daily Update Input)
+# 4. SIDEBAR (Daily Update)
 # ==========================================
 with st.sidebar:
     st.header("⚙️ Daily Update")
-    st.info("Add the latest 3-digit result here.")
+    st.info("Add today's 3-digit result here.")
     
     new_result = st.text_input("Today's Result (3 Digits)", max_chars=3, placeholder="e.g., 146")
     
     if st.button("➕ Add Result & Predict", use_container_width=True):
         if new_result and new_result.isdigit() and len(new_result) == 3:
-            # Append the new result to the existing data
             st.session_state.lottery_data += f",{new_result}"
             st.success(f"Added {new_result} successfully!")
-            st.rerun() # Instantly refresh to recalculate
+            st.rerun() 
         else:
             st.error("Please enter a valid 3-digit number.")
             
@@ -169,36 +203,66 @@ st.markdown('<p class="main-title">Triple Sniper</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub-title">Ion Saliu Mathematics | 3-Digit Precision Engine</p>', unsafe_allow_html=True)
 
 df = process_data(st.session_state.lottery_data)
-
-# Display status
 last_num = f"{df.iloc[0]['Pos 1']}{df.iloc[0]['Pos 2']}{df.iloc[0]['Pos 3']}"
 st.markdown(f"<p style='text-align:center; color:#A0AAB5;'>Data Ready | Latest Draw: <b style='color:#2ECC71;'>{last_num}</b></p>", unsafe_allow_html=True)
 
-# Automatically run the engine
-filtered_pool, stats_dict = calculate_analytics(df, 100)
-least_pairs = get_least_pairs(df, 100)
-sniper_pick = generate_single_pick(df, filtered_pool, stats_dict, least_pairs)
+tab1, tab2 = st.tabs(["🎯 Next Draw", "🧪 Backtest"])
 
-if len(sniper_pick) == 0:
-    st.markdown('<div class="signal-noplay">❌ DO NOT PLAY</div>', unsafe_allow_html=True)
-    st.error("No combinations passed the strict filters.")
-else:
-    pick = sniper_pick[0]
-    combo = pick["combo"]
-    combo_str = "".join(map(str, combo))
-    score = pick["score"]
+# --- TAB 1: MAIN PREDICTION & BOX PLAY ---
+with tab1:
+    # Box Play Toggle
+    box_play_mode = st.checkbox("📦 Enable Box Play (Show all permutations)", value=False)
     
-    st.markdown('<div class="signal-play">✅ PLAY THIS SINGLE NUMBER</div>', unsafe_allow_html=True)
+    filtered_pool, stats_dict = calculate_analytics(df, 100)
+    least_pairs = get_least_pairs(df, 100)
+    sniper_pick = generate_single_pick(df, filtered_pool, stats_dict, least_pairs)
+
+    if len(sniper_pick) == 0:
+        st.markdown('<div class="signal-noplay">❌ DO NOT PLAY</div>', unsafe_allow_html=True)
+        st.error("No combinations passed the strict filters.")
+    else:
+        pick = sniper_pick[0]
+        combo = pick["combo"]
+        combo_str = "".join(map(str, combo))
+        score = pick["score"]
+        
+        st.markdown('<div class="signal-play">✅ PLAY THIS SINGLE NUMBER</div>', unsafe_allow_html=True)
+        
+        st.markdown(f"""
+            <div class="sniper-container">
+                <div class="num-card card-blue"><div class="pos-label">A (1st)</div><div class="pos-digit">{combo[0]}</div></div>
+                <div class="num-card card-green"><div class="pos-label">B (2nd)</div><div class="pos-digit">{combo[1]}</div></div>
+                <div class="num-card card-red"><div class="pos-label">C (3rd)</div><div class="pos-digit">{combo[2]}</div></div>
+            </div>
+            <div style="text-align: center; color: #A0AAB5; font-size: 14px;">Alignment Index: {score}</div>
+        """, unsafe_allow_html=True)
+        
+        st.write("")
+        st.code(combo_str, language="text")
+        st.caption("👆 Straight Play (Exact Order).")
+        
+        # Box Play Logic
+        if box_play_mode:
+            st.markdown("### 📦 Box Play Permutations")
+            st.markdown("If you are playing 'Box', use any of these combinations:")
+            perms = sorted(set(itertools.permutations(combo)))
+            perm_strings = ["".join(map(str, p)) for p in perms]
+            
+            # Display as a grid
+            cols = st.columns(3)
+            for idx, p in enumerate(perm_strings):
+                with cols[idx % 3]:
+                    st.info(f"**{p}**")
+
+# --- TAB 2: BACKTESTING ---
+with tab2:
+    st.markdown("### 🧪 Historical Verification")
+    st.markdown("Run the engine on the last 10 draws to see how it would have performed blindly.")
     
-    st.markdown(f"""
-        <div class="sniper-container">
-            <div class="num-card card-blue"><div class="pos-label">A (1st)</div><div class="pos-digit">{combo[0]}</div></div>
-            <div class="num-card card-green"><div class="pos-label">B (2nd)</div><div class="pos-digit">{combo[1]}</div></div>
-            <div class="num-card card-red"><div class="pos-label">C (3rd)</div><div class="pos-digit">{combo[2]}</div></div>
-        </div>
-        <div style="text-align: center; color: #A0AAB5; font-size: 14px;">Alignment Index: {score}</div>
-    """, unsafe_allow_html=True)
-    
-    st.write("")
-    st.code(combo_str, language="text")
-    st.caption("👆 Copy this exact number for tomorrow's draw.")
+    if st.button("Run Backtest (Last 10 Draws)", use_container_width=True):
+        with st.spinner("Testing the math..."):
+            backtest_df = run_backtest(df, test_range=10)
+            st.dataframe(backtest_df, use_container_width=True, hide_index=True)
+            
+            hits = len(backtest_df[backtest_df["Result"].str.contains("Match|JACKPOT")])
+            st.info(f"**Performance:** The Sniper hit 1 or more exact positions in **{hits}/10** past draws.")
