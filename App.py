@@ -52,93 +52,93 @@ def process_data(data_string):
     return df.iloc[::-1].reset_index(drop=True)
 
 # ==========================================
-# 3. THE MATH ENGINE
+# 3. THE MATH ENGINE (STRICT SALIU FILTERS)
 # ==========================================
-def calculate_analytics(df, max_range):
+def generate_single_board_pick(df, max_range):
     df_limited = df.head(max_range).copy()
+    
+    # --- STEP 1: CALCULATE FFG MEDIANS & SKIPS ---
     positions = ["Pos 1", "Pos 2", "Pos 3"]
-    filtered_pool = {}
-    stats_dict = {}
-
+    stats = {}
+    
     for pos in positions:
         pos_median = df_limited[pos].median()
-        min_range = max(0, int(pos_median - 3))
-        max_range_val = min(9, int(pos_median + 3))
-        valid_digits = []
-
+        stats[pos] = {"number_median": pos_median, "skips": {}}
+        
         for digit in range(10):
-            if digit < min_range or digit > max_range_val: continue
             hits = df_limited.index[df_limited[pos] == digit].tolist()
-            frequency = len(hits)
-            
-            if frequency > 0:
+            if len(hits) > 0:
                 current_skip = hits[0]
                 historical_skips = [(hits[i+1] - hits[i] - 1) for i in range(len(hits)-1)]
                 historical_skips.append(current_skip)
                 median_skip = np.median(historical_skips)
-                
-                status = "🔥 Hot" if current_skip <= (median_skip + 2.5) else ("🟡 Warm" if current_skip <= (median_skip + 4) else "❄️ Cold")
-                if "Hot" in status or "Warm" in status:
-                    valid_digits.append(digit)
+                stats[pos]["skips"][digit] = {"current": current_skip, "median": median_skip, "freq": len(hits)}
             else:
-                current_skip = len(df_limited)
-                median_skip = 0
-                status = "❄️ Never Hit"
-                
-            stats_dict[(pos, digit)] = {"freq": frequency, "status": status}
-            
-        filtered_pool[pos] = valid_digits
-        
-    return filtered_pool, stats_dict
+                stats[pos]["skips"][digit] = {"current": len(df_limited), "median": 0, "freq": 0}
 
-def get_least_pairs(df, max_range):
-    df_limited = df.head(max_range).copy()
-    all_possible_pairs = set(itertools.combinations_with_replacement(range(10), 2))
-    seen_pairs = set()
-    for _, row in df_limited.iterrows():
-        draw_nums = sorted([row["Pos 1"], row["Pos 2"], row["Pos 3"]])
-        draw_pairs = set(itertools.combinations(draw_nums, 2))
-        seen_pairs.update(draw_pairs)
-    return all_possible_pairs - seen_pairs
-
-def generate_single_board_pick(df, filtered_pool, stats_dict, least_pairs):
-    if any(len(filtered_pool[pos]) == 0 for pos in filtered_pool): return []
-
-    all_combos = list(itertools.product(filtered_pool["Pos 1"], filtered_pool["Pos 2"], filtered_pool["Pos 3"]))
-    scored_tickets = []
+    # Calculate Sum-Total Median (Bell Curve)
+    df_limited['Sum'] = df_limited['Pos 1'] + df_limited['Pos 2'] + df_limited['Pos 3']
+    sum_median = df_limited['Sum'].median()
     
+    # --- STEP 2: GENERATE ALL 1000 COMBINATIONS ---
+    all_combos = list(itertools.product(range(10), repeat=3))
+    
+    # --- STEP 3: APPLY STRICT MIN/MAX FILTERS (SIEVE) ---
     prev_draw = df.iloc[0][["Pos 1", "Pos 2", "Pos 3"]].values
-    prev_set = set(prev_draw)
-    prev_perms = set(itertools.permutations(prev_draw)) 
+    prev_perms = set(itertools.permutations(prev_draw))
     
     consecutive_blocks = [(1,2,3), (2,3,4), (3,4,5), (4,5,6), (5,6,7), (6,7,8), (7,8,9), (0,1,2), (3,2,1), (4,3,2), (5,4,3), (6,5,4), (7,6,5), (8,7,6), (9,8,7), (2,1,0)]
-
+    
+    valid_tickets = []
+    
     for combo in all_combos:
-        if not (10 <= sum(combo) <= 18): continue
+        # Filter 1: LIE Elimination (Reject yesterday's permutations)
         if combo in prev_perms: continue
+            
+        # Filter 2: No Consecutive (e.g., 123)
         if combo in consecutive_blocks: continue
+            
+        # Filter 3: No Doubles/Triples (e.g., 343, 666)
         if combo[0] == combo[1] or combo[1] == combo[2] or combo[0] == combo[2]: continue
         
-        combo_sorted = sorted(list(combo))
-        combo_pairs = set(itertools.combinations(combo_sorted, 2))
-        if any(pair in least_pairs for pair in combo_pairs): continue
-
-        score = 0
+        # Filter 4: Sum-Total (Strict Bell Curve - Median ± 2)
+        combo_sum = sum(combo)
+        if not (sum_median - 2 <= combo_sum <= sum_median + 2): continue
+            
+        # Filter 5: STRICT POSITIONAL SKIP FILTER (The Saliu Way)
+        # Reject if the current skip is WAY OVER the historical median skip
+        is_valid = True
         for i, digit in enumerate(combo):
             pos_name = f"Pos {i+1}"
-            if (pos_name, digit) in stats_dict:
-                stats = stats_dict[(pos_name, digit)]
-                score += stats["freq"]
-                if digit in prev_set: score -= 30  
-                if "Hot" in stats["status"]: score += 15
-                elif "Warm" in stats["status"]: score += 5
+            digit_stat = stats[pos_name]["skips"][digit]
+            
+            # If current skip is too high, it's cold. If freq is 0, reject.
+            if digit_stat["freq"] == 0 or digit_stat["current"] > (digit_stat["median"] + 3):
+                is_valid = False
+                break
                 
-        scored_tickets.append({"combo": combo, "score": score})
+        if not is_valid: continue
+            
+        valid_tickets.append(combo)
         
-    scored_tickets = sorted(scored_tickets, key=lambda x: x["score"], reverse=True)
+    # --- STEP 4: IF MULTIPLE SURVIVE, PICK THE ONE CLOSEST TO PERFECT ---
+    # Saliu's software outputs the remaining combinations. 
+    # Since we want ONLY ONE (Single Board), we rank the survivors by Frequency.
+    if len(valid_tickets) == 0:
+        return [], sum_median, stats
+        
+    def score_survivor(ticket):
+        score = 0
+        for i, digit in enumerate(ticket):
+            pos_name = f"Pos {i+1}"
+            score += stats[pos_name]["skips"][digit]["freq"]
+        return score
+
+    valid_tickets = sorted(valid_tickets, key=score_survivor, reverse=True)
     
-    # ONLY RETURN 1 PICK (Single Board)
-    return scored_tickets[:1]
+    # Return ONLY the absolute best survivor
+    return [valid_tickets[0]], sum_median, stats
+
 
 # ==========================================
 # 4. SIDEBAR (Daily Update)
@@ -166,26 +166,21 @@ with st.sidebar:
 # 5. MAIN APP AREA
 # ==========================================
 st.markdown('<p class="main-title">Single Board Sniper</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Ion Saliu Mathematics | 3-Digit Box Play</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Strict Ion Saliu Mathematical Sieve</p>', unsafe_allow_html=True)
 
 df = process_data(st.session_state.lottery_data)
 last_num = f"{df.iloc[0]['Pos 1']}{df.iloc[0]['Pos 2']}{df.iloc[0]['Pos 3']}"
 st.markdown(f"<p style='text-align:center; color:#A0AAB5;'>Latest Draw: <b style='color:#2ECC71;'>{last_num}</b></p>", unsafe_allow_html=True)
 
-filtered_pool, stats_dict = calculate_analytics(df, 100)
-least_pairs = get_least_pairs(df, 100)
+# Run the Engine
+top_picks, sum_med, stats_dict = generate_single_board_pick(df, 100)
 
-# Get ONLY 1 Pick
-single_board_pick = generate_single_board_pick(df, filtered_pool, stats_dict, least_pairs)
-
-if len(single_board_pick) == 0:
+if len(top_picks) == 0:
     st.markdown('<div class="signal-noplay">❌ DO NOT PLAY</div>', unsafe_allow_html=True)
-    st.error("No combinations passed the strict filters.")
+    st.error("Strict filters eliminated all combinations. No board is mathematically viable today.")
 else:
-    pick = single_board_pick[0]
-    combo = pick["combo"]
+    combo = top_picks[0]
     combo_str = "".join(map(str, combo))
-    score = pick["score"]
     
     st.markdown('<div class="signal-play">✅ PLAY THIS 3-DIGIT BOARD</div>', unsafe_allow_html=True)
     
@@ -195,14 +190,14 @@ else:
             <div class="num-card card-green"><div class="pos-label">B (2nd)</div><div class="pos-digit">{combo[1]}</div></div>
             <div class="num-card card-red"><div class="pos-label">C (3rd)</div><div class="pos-digit">{combo[2]}</div></div>
         </div>
-        <div style="text-align: center; color: #A0AAB5; font-size: 14px;">Alignment Index: {score}</div>
+        <div style="text-align: center; color: #A0AAB5; font-size: 14px;">Saliu Filters Passed (Sum Median: {int(sum_med)})</div>
     """, unsafe_allow_html=True)
     
     st.write("")
     st.code(combo_str, language="text")
     st.caption("👆 Straight Play (Exact Order).")
     
-    # Box Play Logic (Show all permutations of this SINGLE combination)
+    # Box Play Logic 
     st.divider()
     st.markdown("### 📦 Box Play Permutations")
     st.markdown(f"If you are playing 'Box', use any of these combinations for **{combo_str}**:")
