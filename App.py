@@ -37,7 +37,10 @@ st.markdown("""
 # 2. INITIALIZE MEMORY
 # ==========================================
 if 'lottery_data' not in st.session_state:
-    st.session_state.lottery_data = """100,156,253,800,173,510,699,621,556,365,209,432,920,748,769,001,938,272,623,616,105,009,938,328,647,736,379,832,602,766,490,287,588,723,406,209,058,102,565,115,608,008,205,663,685,118,011,835,824,400,051,410,984,812,624,386,040,758,241,644,799,949,743,871,522,390,547,967,047,746,926,078,487,511,226,883,293,909,782,876,988,678,122,434,731,702,293,879,563,051,053,102,649,160,197,317,511,993,736,291,178,097,139,525,162,387,868,258,331,467,366,698,097,346,562,746,373,980,737,091,859,342,066,552"""
+    st.session_state.lottery_data = """100,156,253,800,173,510,699,621,556,365,209,432,920,748,769,001,938,272,623,616,105,009,938,328,647,736,379,832,602,766,490,287,588,723,406,209,058,102,565,115,608,008,205,663,685,118,011,835,824,400,051,410,984,812,624,386,040,758,241,644,799,949,743,871,522,390,547,967,047,746,926,078,487,511,226,883,293,909,782,876,988,678,122,434,731,702,293,879,563,051,053,102,649,160,197,317,511,993,736,291,178,097,139,525,162,387,868,258,331,467,366,698,097,346,562,746,373,980,737,091,859,342,066,552,421,505"""
+
+if 'last_prediction' not in st.session_state:
+    st.session_state.last_prediction = ""
 
 def process_data(data_string):
     valid_data = data_string.split(',')
@@ -52,15 +55,13 @@ def process_data(data_string):
     return df.iloc[::-1].reset_index(drop=True)
 
 # ==========================================
-# 3. THE MATH ENGINE (STRICT SALIU FILTERS)
+# 3. THE MATH ENGINE
 # ==========================================
 def generate_single_board_pick(df, max_range):
     df_limited = df.head(max_range).copy()
     
-    # --- STEP 1: CALCULATE FFG MEDIANS & SKIPS ---
     positions = ["Pos 1", "Pos 2", "Pos 3"]
     stats = {}
-    
     for pos in positions:
         pos_median = df_limited[pos].median()
         stats[pos] = {"number_median": pos_median, "skips": {}}
@@ -76,56 +77,37 @@ def generate_single_board_pick(df, max_range):
             else:
                 stats[pos]["skips"][digit] = {"current": len(df_limited), "median": 0, "freq": 0}
 
-    # Calculate Sum-Total Median (Bell Curve)
     df_limited['Sum'] = df_limited['Pos 1'] + df_limited['Pos 2'] + df_limited['Pos 3']
     sum_median = df_limited['Sum'].median()
     
-    # --- STEP 2: GENERATE ALL 1000 COMBINATIONS ---
     all_combos = list(itertools.product(range(10), repeat=3))
     
-    # --- STEP 3: APPLY STRICT MIN/MAX FILTERS (SIEVE) ---
     prev_draw = df.iloc[0][["Pos 1", "Pos 2", "Pos 3"]].values
     prev_perms = set(itertools.permutations(prev_draw))
-    
     consecutive_blocks = [(1,2,3), (2,3,4), (3,4,5), (4,5,6), (5,6,7), (6,7,8), (7,8,9), (0,1,2), (3,2,1), (4,3,2), (5,4,3), (6,5,4), (7,6,5), (8,7,6), (9,8,7), (2,1,0)]
     
     valid_tickets = []
-    
     for combo in all_combos:
-        # Filter 1: LIE Elimination (Reject yesterday's permutations)
-        if combo in prev_perms: continue
-            
-        # Filter 2: No Consecutive (e.g., 123)
-        if combo in consecutive_blocks: continue
-            
-        # Filter 3: No Doubles/Triples (e.g., 343, 666)
-        if combo[0] == combo[1] or combo[1] == combo[2] or combo[0] == combo[2]: continue
+        if combo in prev_perms: continue 
+        if combo in consecutive_blocks: continue 
         
-        # Filter 4: Sum-Total (Strict Bell Curve - Median ± 2)
         combo_sum = sum(combo)
-        if not (sum_median - 2 <= combo_sum <= sum_median + 2): continue
-            
-        # Filter 5: STRICT POSITIONAL SKIP FILTER (The Saliu Way)
-        # Reject if the current skip is WAY OVER the historical median skip
+        # Wider Sum Range: +/- 4
+        if not (sum_median - 4 <= combo_sum <= sum_median + 4): continue 
+        
         is_valid = True
         for i, digit in enumerate(combo):
             pos_name = f"Pos {i+1}"
             digit_stat = stats[pos_name]["skips"][digit]
-            
-            # If current skip is too high, it's cold. If freq is 0, reject.
-            if digit_stat["freq"] == 0 or digit_stat["current"] > (digit_stat["median"] + 3):
+            # Wider Skip Range: + 5
+            if digit_stat["freq"] == 0 or digit_stat["current"] > (digit_stat["median"] + 5):
                 is_valid = False
                 break
-                
         if not is_valid: continue
-            
         valid_tickets.append(combo)
         
-    # --- STEP 4: IF MULTIPLE SURVIVE, PICK THE ONE CLOSEST TO PERFECT ---
-    # Saliu's software outputs the remaining combinations. 
-    # Since we want ONLY ONE (Single Board), we rank the survivors by Frequency.
     if len(valid_tickets) == 0:
-        return [], sum_median, stats
+        return [], sum_median
         
     def score_survivor(ticket):
         score = 0
@@ -136,31 +118,27 @@ def generate_single_board_pick(df, max_range):
 
     valid_tickets = sorted(valid_tickets, key=score_survivor, reverse=True)
     
-    # Return ONLY the absolute best survivor
-    return [valid_tickets[0]], sum_median, stats
+    # 🔥 THE FIX: Prevent repeating yesterday's prediction
+    best_pick = valid_tickets[0]
+    if len(valid_tickets) > 1 and best_pick == st.session_state.last_prediction:
+        best_pick = valid_tickets[1] # Take 2nd best if 1st is a repeat
 
+    return [best_pick], sum_median
 
 # ==========================================
-# 4. SIDEBAR (Daily Update)
+# 4. SIDEBAR
 # ==========================================
 with st.sidebar:
     st.header("⚙️ Daily Update")
-    st.info("Add today's 3-digit result here.")
-    
-    new_result = st.text_input("Today's Result (3 Digits)", max_chars=3, placeholder="e.g., 146")
+    new_result = st.text_input("Today's Result (3 Digits)", max_chars=3, placeholder="e.g., 146", key="new_res_input")
     
     if st.button("➕ Add Result & Predict", use_container_width=True):
         if new_result and new_result.isdigit() and len(new_result) == 3:
-            st.session_state.lottery_data += f",{new_result}"
+            st.session_state.lottery_data = st.session_state.lottery_data.strip() + f",{new_result}"
             st.success(f"Added {new_result} successfully!")
             st.rerun() 
         else:
             st.error("Please enter a valid 3-digit number.")
-            
-    st.divider()
-    if st.button("🔄 Reset Data", use_container_width=True):
-        del st.session_state.lottery_data
-        st.rerun()
 
 # ==========================================
 # 5. MAIN APP AREA
@@ -172,15 +150,17 @@ df = process_data(st.session_state.lottery_data)
 last_num = f"{df.iloc[0]['Pos 1']}{df.iloc[0]['Pos 2']}{df.iloc[0]['Pos 3']}"
 st.markdown(f"<p style='text-align:center; color:#A0AAB5;'>Latest Draw: <b style='color:#2ECC71;'>{last_num}</b></p>", unsafe_allow_html=True)
 
-# Run the Engine
-top_picks, sum_med, stats_dict = generate_single_board_pick(df, 100)
+top_picks, sum_med = generate_single_board_pick(df, 100)
 
 if len(top_picks) == 0:
     st.markdown('<div class="signal-noplay">❌ DO NOT PLAY</div>', unsafe_allow_html=True)
-    st.error("Strict filters eliminated all combinations. No board is mathematically viable today.")
+    st.error("No combinations passed the strict filters today.")
 else:
     combo = top_picks[0]
     combo_str = "".join(map(str, combo))
+    
+    # Save prediction for tomorrow to avoid repeats
+    st.session_state.last_prediction = combo
     
     st.markdown('<div class="signal-play">✅ PLAY THIS 3-DIGIT BOARD</div>', unsafe_allow_html=True)
     
@@ -197,7 +177,6 @@ else:
     st.code(combo_str, language="text")
     st.caption("👆 Straight Play (Exact Order).")
     
-    # Box Play Logic 
     st.divider()
     st.markdown("### 📦 Box Play Permutations")
     st.markdown(f"If you are playing 'Box', use any of these combinations for **{combo_str}**:")
@@ -208,70 +187,3 @@ else:
     for idx, p in enumerate(perm_strings):
         with cols[idx % 3]:
             st.info(f"**{p}**")
-# ==========================================
-# 6. BACKTESTING ENGINE (Append at the bottom)
-# ==========================================
-st.divider()
-st.subheader("🧪 Strategy Backtesting")
-st.markdown("Test how the Single Board Sniper would have performed on the last 10 draws.")
-
-if st.button("Run Backtest (Last 10 Draws)", use_container_width=True):
-    with st.spinner("Simulating mathematical sieve..."):
-        test_results = []
-        test_range = 10
-        
-        # Ensure we have enough data to train
-        if len(df) > test_range + 10:
-            for i in range(test_range):
-                # 1. Split data (Train on past, Test on current)
-                train_data = df.iloc[i+1:].copy()
-                actual_draw = tuple(df.iloc[i][["Pos 1", "Pos 2", "Pos 3"]].values)
-                actual_str = "".join(map(str, actual_draw))
-                
-                # 2. Run the exact same Engine on Training Data
-                picks, _, _ = generate_single_board_pick(train_data, 100)
-                
-                # 3. Compare
-                if not picks:
-                    status = "No Play (Filters)"
-                    match = 0
-                else:
-                    predicted = picks[0]
-                    match = sum(1 for p, a in zip(predicted, actual_draw) if p == a)
-                    if match == 3: status = "🎯 JACKPOT (3/3)"
-                    elif match == 2: status = "✅ 2/3 Match"
-                    elif match == 1: status = "🟡 1/3 Match"
-                    else: status = "❌ Missed"
-                    
-                test_results.append({
-                    "Draw": f"Past -{i+1}",
-                    "Actual": actual_str,
-                    "Sniper Pick": "".join(map(str, picks[0])) if picks else "-",
-                    "Result": status
-                })
-            
-            # Display Results
-            res_df = pd.DataFrame(test_results)
-            st.dataframe(res_df, use_container_width=True, hide_index=True)
-            
-            hits = len(res_df[res_df["Result"].str.contains("Match|JACKPOT")])
-            st.info(f"**Performance:** The Sniper hit 1 or more exact positions in **{hits}/10** past draws.")
-        else:
-            st.warning("Not enough data to run backtest.")
-# ...  ...
-valid_tickets = sorted(valid_tickets, key=score_survivor, reverse=True)
-
-# NEW RULE: Don't repeat yesterday's exact prediction
-if len(valid_tickets) > 1 and valid_tickets[0] == st.session_state.last_prediction:
-    best_pick = valid_tickets[1] # Take the 2nd best if 1st is a repeat
-elif len(valid_tickets) > 0:
-    best_pick = valid_tickets[0]
-else:
-    return [], sum_median
-
-# Save this as the last prediction for tomorrow
-st.session_state.last_prediction = best_pick
-
-return [best_pick], sum_median
-if len(top_picks) == 1 and top_picks[0] == st.session_state.last_prediction:
-    st.warning("⚠️ The mathematically perfect number was generated yesterday. Showing the next best mathematically viable option.")
