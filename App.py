@@ -258,3 +258,20 @@ if st.button("Run Backtest (Last 10 Draws)", use_container_width=True):
             st.info(f"**Performance:** The Sniper hit 1 or more exact positions in **{hits}/10** past draws.")
         else:
             st.warning("Not enough data to run backtest.")
+# ...  ...
+valid_tickets = sorted(valid_tickets, key=score_survivor, reverse=True)
+
+# NEW RULE: Don't repeat yesterday's exact prediction
+if len(valid_tickets) > 1 and valid_tickets[0] == st.session_state.last_prediction:
+    best_pick = valid_tickets[1] # Take the 2nd best if 1st is a repeat
+elif len(valid_tickets) > 0:
+    best_pick = valid_tickets[0]
+else:
+    return [], sum_median
+
+# Save this as the last prediction for tomorrow
+st.session_state.last_prediction = best_pick
+
+return [best_pick], sum_median
+if len(top_picks) == 1 and top_picks[0] == st.session_state.last_prediction:
+    st.warning("⚠️ The mathematically perfect number was generated yesterday. Showing the next best mathematically viable option.")
