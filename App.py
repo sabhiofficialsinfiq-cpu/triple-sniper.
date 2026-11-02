@@ -37,7 +37,7 @@ st.markdown("""
 # 2. INITIALIZE MEMORY
 # ==========================================
 if 'lottery_data' not in st.session_state:
-    # Dataset updated up to 02/11/2026 (682 - based on user's previous context)
+    # Dataset updated up to 02/11/2026 (682)
     st.session_state.lottery_data = """100,156,253,800,173,510,699,621,556,365,209,432,920,748,769,001,938,272,623,616,105,009,938,328,647,736,379,832,602,766,490,287,588,723,406,209,058,102,565,115,608,008,205,663,685,118,011,835,824,400,051,410,984,812,624,386,040,758,241,644,799,949,743,871,522,390,547,967,047,746,926,078,487,511,226,883,293,909,782,876,988,678,122,434,731,702,293,879,563,051,053,102,649,160,197,317,511,993,736,291,178,097,139,525,162,387,868,258,331,467,366,698,097,346,562,746,373,980,737,091,859,342,066,552,421,505,682"""
 
 def process_data(data_string):
@@ -86,8 +86,13 @@ def generate_single_board(df, max_range):
     
     valid_tickets = []
     for combo in all_combos:
+        # Strict Rule: Reject if the combo is a permutation of yesterday's draw
         if combo in prev_perms: continue 
         if combo in consecutive_blocks: continue 
+        
+        # Strict Rule: Reject if ANY digit matches yesterday's digit in the SAME position
+        if combo[0] == prev_draw[0] or combo[1] == prev_draw[1] or combo[2] == prev_draw[2]:
+            continue
         
         combo_sum = sum(combo)
         if not (sum_median - 4 <= combo_sum <= sum_median + 4): continue 
@@ -110,11 +115,16 @@ def generate_single_board(df, max_range):
         for i, digit in enumerate(ticket):
             pos_name = f"Pos {i+1}"
             score += stats[pos_name]["skips"][digit]["freq"]
+            
+            # HEAVY PENALTY: If the digit appeared in yesterday's draw (any position)
+            if digit in prev_draw:
+                score -= 50  # Deduct 50 points so it drops out of Top 1
+                
         return score
 
     valid_tickets = sorted(valid_tickets, key=score_survivor, reverse=True)
     
-    # 🔥 STRICT: Return ONLY THE VERY FIRST BOARD
+    # STRICT: Return ONLY THE VERY FIRST BOARD
     return valid_tickets[:1], sum_median
 
 # ==========================================
@@ -136,7 +146,7 @@ with st.sidebar:
 # 5. MAIN APP AREA
 # ==========================================
 st.markdown('<p class="main-title">Single Board Sniper</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Strict Ion Saliu Mathematical Sieve (1 Board Only)</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Strict Ion Saliu Sieve (1 Board Only)</p>', unsafe_allow_html=True)
 
 df = process_data(st.session_state.lottery_data)
 last_num = f"{df.iloc[0]['Pos 1']}{df.iloc[0]['Pos 2']}{df.iloc[0]['Pos 3']}"
@@ -165,15 +175,3 @@ else:
     st.write("")
     st.code(combo_str, language="text")
     st.caption("👆 Straight Play (Exact Order).")
-    
-    # Box Play for this single board
-    st.divider()
-    st.markdown("### 📦 Box Play Permutations")
-    st.markdown(f"If you are playing 'Box', use any of these combinations for **{combo_str}**:")
-    perms = sorted(set(itertools.permutations(combo)))
-    perm_strings = ["".join(map(str, p)) for p in perms]
-    
-    cols = st.columns(3)
-    for idx, p in enumerate(perm_strings):
-        with cols[idx % 3]:
-            st.info(f"**{p}**")
