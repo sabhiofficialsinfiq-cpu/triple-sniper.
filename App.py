@@ -18,18 +18,20 @@ st.markdown("""
     .main-title { color: #4A90E2; font-size: 45px; font-weight: 900; text-align: center; letter-spacing: 2px; margin-bottom: 0px; text-transform: uppercase; }
     .sub-title { color: #A0AAB5; font-size: 16px; text-align: center; margin-bottom: 30px; }
     
-    .sniper-container { display: flex; justify-content: center; gap: 20px; margin-top: 30px; margin-bottom: 20px; }
-    .num-card { background: linear-gradient(145deg, #121A28, #1A2436); border-radius: 15px; padding: 20px; width: 100px; text-align: center; box-shadow: 0 8px 16px rgba(0,0,0,0.5); }
+    .sniper-container { display: flex; justify-content: center; gap: 15px; margin-top: 15px; margin-bottom: 15px; }
+    .num-card { background: linear-gradient(145deg, #121A28, #1A2436); border-radius: 12px; padding: 15px; width: 80px; text-align: center; box-shadow: 0 8px 16px rgba(0,0,0,0.5); }
     
     .card-blue { border: 2px solid #4A90E2; box-shadow: 0 0 15px rgba(74, 144, 226, 0.3); }
     .card-green { border: 2px solid #2ECC71; box-shadow: 0 0 15px rgba(46, 204, 113, 0.3); }
     .card-red { border: 2px solid #E74C3C; box-shadow: 0 0 15px rgba(231, 76, 60, 0.3); }
 
-    .pos-label { color: #8892B0; font-size: 14px; font-weight: bold; margin-bottom: 5px; }
-    .pos-digit { font-size: 48px; font-weight: bold; color: white; margin: 0; }
+    .pos-label { color: #8892B0; font-size: 12px; font-weight: bold; margin-bottom: 5px; }
+    .pos-digit { font-size: 38px; font-weight: bold; color: white; margin: 0; }
     
     .signal-play { background-color: #2ECC71; color: white; text-align: center; padding: 15px; border-radius: 10px; font-size: 24px; font-weight: bold; margin-top: 20px; box-shadow: 0 0 20px rgba(46, 204, 113, 0.4); }
     .signal-noplay { background-color: #E74C3C; color: white; text-align: center; padding: 15px; border-radius: 10px; font-size: 24px; font-weight: bold; margin-top: 20px; box-shadow: 0 0 20px rgba(231, 76, 60, 0.4); }
+    
+    .rank-title { color: #4A90E2; font-size: 18px; font-weight: bold; margin-top: 20px; border-bottom: 1px solid #2a3f5c; padding-bottom: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -37,10 +39,8 @@ st.markdown("""
 # 2. INITIALIZE MEMORY
 # ==========================================
 if 'lottery_data' not in st.session_state:
+    # Dataset updated up to 02/11/2026 (505)
     st.session_state.lottery_data = """100,156,253,800,173,510,699,621,556,365,209,432,920,748,769,001,938,272,623,616,105,009,938,328,647,736,379,832,602,766,490,287,588,723,406,209,058,102,565,115,608,008,205,663,685,118,011,835,824,400,051,410,984,812,624,386,040,758,241,644,799,949,743,871,522,390,547,967,047,746,926,078,487,511,226,883,293,909,782,876,988,678,122,434,731,702,293,879,563,051,053,102,649,160,197,317,511,993,736,291,178,097,139,525,162,387,868,258,331,467,366,698,097,346,562,746,373,980,737,091,859,342,066,552,421,505"""
-
-if 'last_prediction' not in st.session_state:
-    st.session_state.last_prediction = ""
 
 def process_data(data_string):
     valid_data = data_string.split(',')
@@ -55,9 +55,9 @@ def process_data(data_string):
     return df.iloc[::-1].reset_index(drop=True)
 
 # ==========================================
-# 3. THE MATH ENGINE
+# 3. THE MATH ENGINE (Top 3 Picks)
 # ==========================================
-def generate_single_board_pick(df, max_range):
+def generate_top_3_boards(df, max_range):
     df_limited = df.head(max_range).copy()
     
     positions = ["Pos 1", "Pos 2", "Pos 3"]
@@ -118,19 +118,15 @@ def generate_single_board_pick(df, max_range):
 
     valid_tickets = sorted(valid_tickets, key=score_survivor, reverse=True)
     
-    # 🔥 THE FIX: Prevent repeating yesterday's prediction
-    best_pick = valid_tickets[0]
-    if len(valid_tickets) > 1 and best_pick == st.session_state.last_prediction:
-        best_pick = valid_tickets[1] # Take 2nd best if 1st is a repeat
-
-    return [best_pick], sum_median
+    # Return the TOP 3 BOARDS
+    return valid_tickets[:3], sum_median
 
 # ==========================================
 # 4. SIDEBAR
 # ==========================================
 with st.sidebar:
     st.header("⚙️ Daily Update")
-    new_result = st.text_input("Today's Result (3 Digits)", max_chars=3, placeholder="e.g., 146", key="new_res_input")
+    new_result = st.text_input("Today's Result (3 Digits)", max_chars=3, placeholder="e.g., 682", key="new_res_input")
     
     if st.button("➕ Add Result & Predict", use_container_width=True):
         if new_result and new_result.isdigit() and len(new_result) == 3:
@@ -144,46 +140,40 @@ with st.sidebar:
 # 5. MAIN APP AREA
 # ==========================================
 st.markdown('<p class="main-title">Single Board Sniper</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Strict Ion Saliu Mathematical Sieve</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Strict Ion Saliu Mathematical Sieve (Top 3)</p>', unsafe_allow_html=True)
 
 df = process_data(st.session_state.lottery_data)
 last_num = f"{df.iloc[0]['Pos 1']}{df.iloc[0]['Pos 2']}{df.iloc[0]['Pos 3']}"
 st.markdown(f"<p style='text-align:center; color:#A0AAB5;'>Latest Draw: <b style='color:#2ECC71;'>{last_num}</b></p>", unsafe_allow_html=True)
 
-top_picks, sum_med = generate_single_board_pick(df, 100)
+top_boards, sum_med = generate_top_3_boards(df, 100)
 
-if len(top_picks) == 0:
+if len(top_boards) == 0:
     st.markdown('<div class="signal-noplay">❌ DO NOT PLAY</div>', unsafe_allow_html=True)
     st.error("No combinations passed the strict filters today.")
 else:
-    combo = top_picks[0]
-    combo_str = "".join(map(str, combo))
-    
-    # Save prediction for tomorrow to avoid repeats
-    st.session_state.last_prediction = combo
-    
-    st.markdown('<div class="signal-play">✅ PLAY THIS 3-DIGIT BOARD</div>', unsafe_allow_html=True)
-    
-    st.markdown(f"""
-        <div class="sniper-container">
-            <div class="num-card card-blue"><div class="pos-label">A (1st)</div><div class="pos-digit">{combo[0]}</div></div>
-            <div class="num-card card-green"><div class="pos-label">B (2nd)</div><div class="pos-digit">{combo[1]}</div></div>
-            <div class="num-card card-red"><div class="pos-label">C (3rd)</div><div class="pos-digit">{combo[2]}</div></div>
-        </div>
-        <div style="text-align: center; color: #A0AAB5; font-size: 14px;">Saliu Filters Passed (Sum Median: {int(sum_med)})</div>
-    """, unsafe_allow_html=True)
-    
+    st.markdown('<div class="signal-play">✅ PLAY THESE TOP 3 BOARDS</div>', unsafe_allow_html=True)
     st.write("")
-    st.code(combo_str, language="text")
-    st.caption("👆 Straight Play (Exact Order).")
     
-    st.divider()
-    st.markdown("### 📦 Box Play Permutations")
-    st.markdown(f"If you are playing 'Box', use any of these combinations for **{combo_str}**:")
-    perms = sorted(set(itertools.permutations(combo)))
-    perm_strings = ["".join(map(str, p)) for p in perms]
-    
-    cols = st.columns(3)
-    for idx, p in enumerate(perm_strings):
-        with cols[idx % 3]:
-            st.info(f"**{p}**")
+    for idx, combo in enumerate(top_boards):
+        combo_str = "".join(map(str, combo))
+        
+        st.markdown(f'<div class="rank-title">Rank #{idx+1}</div>', unsafe_allow_html=True)
+        
+        st.markdown(f"""
+            <div class="sniper-container">
+                <div class="num-card card-blue"><div class="pos-label">A (1st)</div><div class="pos-digit">{combo[0]}</div></div>
+                <div class="num-card card-green"><div class="pos-label">B (2nd)</div><div class="pos-digit">{combo[1]}</div></div>
+                <div class="num-card card-red"><div class="pos-label">C (3rd)</div><div class="pos-digit">{combo[2]}</div></div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.code(combo_str, language="text")
+        
+        # Box Play expander for each pick
+        with st.expander(f"📦 Box Play Permutations for {combo_str}"):
+            perms = sorted(set(itertools.permutations(combo)))
+            perm_strings = ["".join(map(str, p)) for p in perms]
+            st.info(", ".join(perm_strings))
+
+    st.info(f"💡 **Math Check:** These 3 boards survived the Saliu Sieve (Sum Median: {int(sum_med)}). Playing all 3 ensures a high probability of hitting at least 2 exact digits.")
