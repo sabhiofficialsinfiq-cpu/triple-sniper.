@@ -34,11 +34,33 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. INITIALIZE MEMORY
+# 2. AUTO-PARSER FOR TABLE DATA
+# ==========================================
+def parse_table_data(text):
+    lines = text.strip().split('\n')
+    # Remove header and empty/separator lines
+    data_lines = [l for l in lines[1:] if l.strip() and '---' not in l]
+    if not data_lines: return ""
+    
+    max_cols = max(len(l.split('\t')) for l in data_lines)
+    valid_data = []
+    
+    # Read column by column to maintain chronological order
+    for col_idx in range(1, max_cols):
+        for line in data_lines:
+            parts = line.split('\t')
+            if col_idx < len(parts):
+                val = parts[col_idx].strip()
+                if val.isdigit():
+                    valid_data.append(val.zfill(3))
+    return ",".join(valid_data)
+
+# ==========================================
+# 3. INITIALIZE MEMORY
 # ==========================================
 if 'lottery_data' not in st.session_state:
-    # Dataset updated up to 02/11/2026 (682)
-    st.session_state.lottery_data = """100,156,253,800,173,510,699,621,556,365,209,432,920,748,769,001,938,272,623,616,105,009,938,328,647,736,379,832,602,766,490,287,588,723,406,209,058,102,565,115,608,008,205,663,685,118,011,835,824,400,051,410,984,812,624,386,040,758,241,644,799,949,743,871,522,390,547,967,047,746,926,078,487,511,226,883,293,909,782,876,988,678,122,434,731,702,293,879,563,051,053,102,649,160,197,317,511,993,736,291,178,097,139,525,162,387,868,258,331,467,366,698,097,346,562,746,373,980,737,091,859,342,066,552,421,505,682"""
+    # Default data (You will paste the full table in the sidebar)
+    st.session_state.lottery_data = "100,156,253,800,173,510,699,621,556,365,209,432,920,748,769,001,938,272,623,616,105,009,938,328,647,736,379,832,602,766,490,287,588,723,406,209,058,102,565,115,608,008,205,663,685,118,011,835,824,400,051,410,984,812,624,386,040,758,241,644,799,949,743,871,522,390,547,967,047,746,926,078,487,511,226,883,293,909,782,876,988,678,122,434,731,702,293,879,563,051,053,102,649,160,197,317,511,993,736,291,178,097,139,525,162,387,868,258,331,467,366,698,097,346,562,746,373,980,737,091,859,342,066,552,421,505,682"
 
 def process_data(data_string):
     valid_data = data_string.split(',')
@@ -53,7 +75,7 @@ def process_data(data_string):
     return df.iloc[::-1].reset_index(drop=True)
 
 # ==========================================
-# 3. THE MATH ENGINE (EXACTLY 1 BOARD)
+# 4. THE MATH ENGINE (EXACTLY 1 BOARD)
 # ==========================================
 def generate_single_board(df, max_range):
     df_limited = df.head(max_range).copy()
@@ -86,7 +108,6 @@ def generate_single_board(df, max_range):
     
     valid_tickets = []
     for combo in all_combos:
-        # Strict Rule: Reject if the combo is a permutation of yesterday's draw
         if combo in prev_perms: continue 
         if combo in consecutive_blocks: continue 
         
@@ -115,24 +136,38 @@ def generate_single_board(df, max_range):
         for i, digit in enumerate(ticket):
             pos_name = f"Pos {i+1}"
             score += stats[pos_name]["skips"][digit]["freq"]
-            
-            # HEAVY PENALTY: If the digit appeared in yesterday's draw (any position)
+            # Heavy Penalty for yesterday's digits
             if digit in prev_draw:
-                score -= 50  # Deduct 50 points so it drops out of Top 1
-                
+                score -= 50  
         return score
 
     valid_tickets = sorted(valid_tickets, key=score_survivor, reverse=True)
-    
-    # STRICT: Return ONLY THE VERY FIRST BOARD
     return valid_tickets[:1], sum_median
 
 # ==========================================
-# 4. SIDEBAR
+# 5. SIDEBAR (Data Update)
 # ==========================================
 with st.sidebar:
-    st.header("⚙️ Daily Update")
-    new_result = st.text_input("Today's Result (3 Digits)", max_chars=3, placeholder="e.g., 682", key="new_res_input")
+    st.header("⚙️ Data Control")
+    
+    # 1. Bulk Paste Table
+    st.markdown("**1. Paste Full Table (Excel format)**")
+    table_input = st.text_area("Paste table here:", height=150)
+    if st.button("📥 Parse & Load Table"):
+        if table_input:
+            parsed_string = parse_table_data(table_input)
+            if parsed_string:
+                st.session_state.lottery_data = parsed_string
+                st.success("Table parsed successfully!")
+                st.rerun()
+            else:
+                st.error("Could not parse data. Check format.")
+    
+    st.divider()
+    
+    # 2. Single Daily Update
+    st.markdown("**2. Add Today's Result**")
+    new_result = st.text_input("Result (3 Digits)", max_chars=3, key="new_res_input")
     
     if st.button("➕ Add Result & Predict", use_container_width=True):
         if new_result and new_result.isdigit() and len(new_result) == 3:
@@ -143,16 +178,17 @@ with st.sidebar:
             st.error("Please enter a valid 3-digit number.")
 
 # ==========================================
-# 5. MAIN APP AREA
+# 6. MAIN APP AREA
 # ==========================================
 st.markdown('<p class="main-title">Single Board Sniper</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Strict Ion Saliu Sieve (1 Board Only)</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Strict Ion Saliu Sieve (Large Data Mode)</p>', unsafe_allow_html=True)
 
 df = process_data(st.session_state.lottery_data)
 last_num = f"{df.iloc[0]['Pos 1']}{df.iloc[0]['Pos 2']}{df.iloc[0]['Pos 3']}"
-st.markdown(f"<p style='text-align:center; color:#A0AAB5;'>Latest Draw: <b style='color:#2ECC71;'>{last_num}</b></p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align:center; color:#A0AAB5;'>Total Draws Loaded: <b>{len(df)}</b> | Latest: <b style='color:#2ECC71;'>{last_num}</b></p>", unsafe_allow_html=True)
 
-top_board, sum_med = generate_single_board(df, 100)
+# Note: Increased max_range to 250 to leverage the large dataset
+top_board, sum_med = generate_single_board(df, 250) 
 
 if len(top_board) == 0:
     st.markdown('<div class="signal-noplay">❌ DO NOT PLAY</div>', unsafe_allow_html=True)
@@ -175,3 +211,13 @@ else:
     st.write("")
     st.code(combo_str, language="text")
     st.caption("👆 Straight Play (Exact Order).")
+    
+    st.divider()
+    st.markdown("### 📦 Box Play Permutations")
+    perms = sorted(set(itertools.permutations(combo)))
+    perm_strings = ["".join(map(str, p)) for p in perms]
+    
+    cols = st.columns(3)
+    for idx, p in enumerate(perm_strings):
+        with cols[idx % 3]:
+            st.info(f"**{p}**")
