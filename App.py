@@ -2,60 +2,80 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import itertools
-import io
 
-# ==========================================
-# 1. PAGE CONFIGURATION & STYLING
-# ==========================================
-st.set_page_config(
-    page_title="Single Board Sniper | Ion Saliu",
-    page_icon="🎯",
-    layout="centered"
-)
+st.set_page_config(page_title="Triple Sniper Engine | 400+ Days", layout="centered")
 
 st.markdown("""
     <style>
     .stApp { background-color: #0A0E17; color: white; }
-    .main-title { color: #4A90E2; font-size: 45px; font-weight: 900; text-align: center; letter-spacing: 2px; margin-bottom: 0px; text-transform: uppercase; }
+    .main-title { color: #4A90E2; font-size: 40px; font-weight: 900; text-align: center; text-transform: uppercase; }
     .sub-title { color: #A0AAB5; font-size: 16px; text-align: center; margin-bottom: 30px; }
-    
     .sniper-container { display: flex; justify-content: center; gap: 20px; margin-top: 30px; margin-bottom: 20px; }
     .num-card { background: linear-gradient(145deg, #121A28, #1A2436); border-radius: 15px; padding: 20px; width: 100px; text-align: center; box-shadow: 0 8px 16px rgba(0,0,0,0.5); }
-    
     .card-blue { border: 2px solid #4A90E2; box-shadow: 0 0 15px rgba(74, 144, 226, 0.3); }
     .card-green { border: 2px solid #2ECC71; box-shadow: 0 0 15px rgba(46, 204, 113, 0.3); }
     .card-red { border: 2px solid #E74C3C; box-shadow: 0 0 15px rgba(231, 76, 60, 0.3); }
-
     .pos-label { color: #8892B0; font-size: 14px; font-weight: bold; margin-bottom: 5px; }
     .pos-digit { font-size: 48px; font-weight: bold; color: white; margin: 0; }
-    
     .signal-play { background-color: #2ECC71; color: white; text-align: center; padding: 15px; border-radius: 10px; font-size: 24px; font-weight: bold; margin-top: 20px; box-shadow: 0 0 20px rgba(46, 204, 113, 0.4); }
     .signal-noplay { background-color: #E74C3C; color: white; text-align: center; padding: 15px; border-radius: 10px; font-size: 24px; font-weight: bold; margin-top: 20px; box-shadow: 0 0 20px rgba(231, 76, 60, 0.4); }
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. INITIALIZE MEMORY
+# 400+ DAYS DATASET (From SEP to NOV 2026)
 # ==========================================
-if 'lottery_data' not in st.session_state:
-    st.session_state.lottery_data = "100,156,253,800,173,510,699,621,556,365,209,432,920,748,769,001,938,272,623,616,105,009,938,328,647,736,379,832,602,766,490,287,588,723,406,209,058,102,565,115,608,008,205,663,685,118,011,835,824,400,051,410,984,812,624,386,040,758,241,644,799,949,743,871,522,390,547,967,047,746,926,078,487,511,226,883,293,909,782,876,988,678,122,434,731,702,293,879,563,051,053,102,649,160,197,317,511,993,736,291,178,097,139,525,162,387,868,258,331,467,366,698,097,346,562,746,373,980,737,091,859,342,066,552,421,505,682"
+raw_data = """
+362,970,562,280,010,941,005,956,094,578,105,933,511,317,505
+749,434,035,281,950,886,662,477,732,009,685,226,682
+651,313,550,327,203,864,651,575,246,694,938,118,883,511,731
+737,818,100,638,016,293,078,278,676,098,328,011,293,993,977
+029,668,395,648,533,959,309,359,834,486,647,835,909,736
+701,250,052,455,836,802,645,053,691,620,736,824,151,291
+995,758,257,211,570,547,507,530,520,818,379,400,793,178
+155,285,611,197,742,494,574,417,661,607,832,051,336,097
+011,690,737,724,202,077,646,548,110,218,602,410,284,139
+161,359,305,796,048,123,511,619,480,859,766,984,035,525
+686,754,880,836,897,079,016,843,360,100,490,812,943,162
+641,004,602,945,534,503,939,270,910,156,287,624,915,387
+490,027,591,958,413,977,602,918,095,253,588,386,388,868
+461,688,116,938,036,470,169,910,606,800,723,040,782,258
+799,106,874,783,759,097,714,415,619,173,406,876,331
+004,101,576,371,357,585,105,037,659,510,209,758,988,467
+066,569,887,948,481,047,267,611,054,699,058,241,678,366
+455,760,713,535,749,459,415,250,632,621,102,644,122,698
+525,236,806,340,348,763,843,004,707,556,565,799,434,097
+171,472,260,879,613,183,291,048,580,365,115,949,731,346
+286,216,914,450,702,171,319,475,858,209,608,743,702,562
+304,601,364,670,407,618,169,193,196,432,008,871,293,746
+290,647,031,549,724,563,340,347,068,920,205,522,879,383
+844,487,627,830,551,678,577,975,972,748,663,390,563,980
+290,461,877,720,838,839,913,093,587,769,736,547,051,737
+333,842,984,289,291,445,407,871,001,866,967,053,091
+193,650,901,539,417,275,340,194,125,938,430,047,102,371
+757,986,073,933,325,400,381,495,620,272,232,746,649,342
+627,288,504,572,465,306,052,210,623,019,926,160,066
+016,822,057,134,104,932,864,358,616,069,078,197,552
+267,547,063,815,257,997,487,421
+"""
 
 def process_data(data_string):
-    valid_data = data_string.split(',')
+    # Clean the string and split
+    valid_data = [v.strip() for v in data_string.replace('\n', ',').split(',') if v.strip().isdigit()]
+    
     parsed = []
     for val in valid_data:
-        val = val.strip()
-        if val.isdigit():
-            padded = val.zfill(3)
-            parsed.append([int(padded[0]), int(padded[1]), int(padded[2])])
-            
+        padded = val.zfill(3)
+        parsed.append([int(padded[0]), int(padded[1]), int(padded[2])])
+        
     df = pd.DataFrame(parsed, columns=["Pos 1", "Pos 2", "Pos 3"])
+    # Reverse: Newest draw at index 0
     return df.iloc[::-1].reset_index(drop=True)
 
 # ==========================================
-# 3. THE MATH ENGINE (EXACTLY 1 BOARD)
+# THE MATH ENGINE (STRICT SALIU FILTERS)
 # ==========================================
-def generate_single_board(df, max_range):
+def generate_sniper_pick(df, max_range=350):
     df_limited = df.head(max_range).copy()
     
     positions = ["Pos 1", "Pos 2", "Pos 3"]
@@ -80,116 +100,88 @@ def generate_single_board(df, max_range):
     
     all_combos = list(itertools.product(range(10), repeat=3))
     
+    # Recent draw logic for penalties
     prev_draw = df.iloc[0][["Pos 1", "Pos 2", "Pos 3"]].values
+    prev_set = set(prev_draw)
     prev_perms = set(itertools.permutations(prev_draw))
     consecutive_blocks = [(1,2,3), (2,3,4), (3,4,5), (4,5,6), (5,6,7), (6,7,8), (7,8,9), (0,1,2), (3,2,1), (4,3,2), (5,4,3), (6,5,4), (7,6,5), (8,7,6), (9,8,7), (2,1,0)]
     
-    valid_tickets = []
+    scored_tickets = []
     for combo in all_combos:
+        # LIE Elimination (Permutations)
         if combo in prev_perms: continue 
+        # No Consecutive
         if combo in consecutive_blocks: continue 
+        # Sum Filter (Bell Curve ± 3)
+        if not (sum_median - 3 <= sum(combo) <= sum_median + 3): continue 
         
-        if combo[0] == prev_draw[0] or combo[1] == prev_draw[1] or combo[2] == prev_draw[2]:
-            continue
-        
-        combo_sum = sum(combo)
-        if not (sum_median - 4 <= combo_sum <= sum_median + 4): continue 
-        
+        score = 0
         is_valid = True
+        
         for i, digit in enumerate(combo):
             pos_name = f"Pos {i+1}"
             digit_stat = stats[pos_name]["skips"][digit]
-            if digit_stat["freq"] == 0 or digit_stat["current"] > (digit_stat["median"] + 5):
+            
+            # Strict Skip Check
+            if digit_stat["freq"] == 0 or digit_stat["current"] > (digit_stat["median"] + 3):
                 is_valid = False
                 break
-        if not is_valid: continue
-        valid_tickets.append(combo)
-        
-    if len(valid_tickets) == 0:
+            
+            # Base Frequency Score
+            score += digit_stat["freq"]
+            
+            # Hot Bonus (+15)
+            if digit_stat["current"] <= digit_stat["median"]:
+                score += 15
+            
+            # Heavy Penalty (-30) for yesterday's digits
+            if digit in prev_set:
+                score -= 30
+                
+        if is_valid:
+            scored_tickets.append({"combo": combo, "score": score})
+            
+    if not scored_tickets:
         return [], sum_median
         
-    def score_survivor(ticket):
-        score = 0
-        for i, digit in enumerate(ticket):
-            pos_name = f"Pos {i+1}"
-            score += stats[pos_name]["skips"][digit]["freq"]
-            if digit in prev_draw:
-                score -= 50  
-        return score
-
-    valid_tickets = sorted(valid_tickets, key=score_survivor, reverse=True)
-    return valid_tickets[:1], sum_median
-
-# ==========================================
-# 4. SIDEBAR (Data Control)
-# ==========================================
-with st.sidebar:
-    st.header("⚙️ Data Control")
+    # Sort by highest score
+    scored_tickets = sorted(scored_tickets, key=lambda x: x["score"], reverse=True)
     
-    # Option 1: File Upload (Safer for large data)
-    st.markdown("**1. Upload Data File (CSV/TXT)**")
-    uploaded_file = st.file_uploader("Choose a file", type=["csv", "txt"])
-    if uploaded_file is not None:
-        stringio = io.StringIO(uploaded_file.getvalue().decode("utf-8"))
-        raw_text = stringio.read().replace('\n', ',').replace('\t', ',')
-        clean_data = ",".join([val.strip().zfill(3) for val in raw_text.split(',') if val.strip().isdigit()])
-        if clean_data:
-            st.session_state.lottery_data = clean_data
-            st.success("File loaded and parsed successfully!")
-
-    st.divider()
-    
-    # Option 2: Daily Update
-    st.markdown("**2. Add Today's Result**")
-    new_result = st.text_input("Result (3 Digits)", max_chars=3, key="new_res_input")
-    
-    if st.button("➕ Add Result & Predict", use_container_width=True):
-        if new_result and new_result.isdigit() and len(new_result) == 3:
-            st.session_state.lottery_data = st.session_state.lottery_data.strip() + f",{new_result}"
-            st.success(f"Added {new_result} successfully!")
-            st.rerun() 
-        else:
-            st.error("Please enter a valid 3-digit number.")
+    # Return Top 3
+    return scored_tickets[:3], sum_median
 
 # ==========================================
-# 5. MAIN APP AREA
+# MAIN APP AREA
 # ==========================================
-st.markdown('<p class="main-title">Single Board Sniper</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Strict Ion Saliu Sieve (Large Data Mode)</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-title">Triple Sniper Engine</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">400+ Days Data | Ion Saliu Strict Filters</p>', unsafe_allow_html=True)
 
-df = process_data(st.session_state.lottery_data)
+df = process_data(raw_data)
+
 last_num = f"{df.iloc[0]['Pos 1']}{df.iloc[0]['Pos 2']}{df.iloc[0]['Pos 3']}"
-st.markdown(f"<p style='text-align:center; color:#A0AAB5;'>Total Draws: <b>{len(df)}</b> | Latest: <b style='color:#2ECC71;'>{last_num}</b></p>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align:center; color:#A0AAB5;'>Total Draws: <b>{len(df)}</b> | Latest Draw: <b style='color:#2ECC71;'>{last_num}</b></p>", unsafe_allow_html=True)
 
-top_board, sum_med = generate_single_board(df, 250) 
+top_picks, sum_med = generate_sniper_pick(df, 350)
 
-if len(top_board) == 0:
+if len(top_picks) == 0:
     st.markdown('<div class="signal-noplay">❌ DO NOT PLAY</div>', unsafe_allow_html=True)
     st.error("No combinations passed the strict filters today.")
 else:
-    combo = top_board[0]
-    combo_str = "".join(map(str, combo))
+    st.markdown('<div class="signal-play">✅ TOP 3 SNIPER PICKS</div>', unsafe_allow_html=True)
     
-    st.markdown('<div class="signal-play">✅ PLAY THIS 1 BOARD</div>', unsafe_allow_html=True)
-    
-    st.markdown(f"""
-        <div class="sniper-container">
-            <div class="num-card card-blue"><div class="pos-label">A (1st)</div><div class="pos-digit">{combo[0]}</div></div>
-            <div class="num-card card-green"><div class="pos-label">B (2nd)</div><div class="pos-digit">{combo[1]}</div></div>
-            <div class="num-card card-red"><div class="pos-label">C (3rd)</div><div class="pos-digit">{combo[2]}</div></div>
-        </div>
-        <div style="text-align: center; color: #A0AAB5; font-size: 14px;">Saliu Filters Passed (Sum Median: {int(sum_med)})</div>
-    """, unsafe_allow_html=True)
-    
-    st.write("")
-    st.code(combo_str, language="text")
-    
-    st.divider()
-    st.markdown("### 📦 Box Play Permutations")
-    perms = sorted(set(itertools.permutations(combo)))
-    perm_strings = ["".join(map(str, p)) for p in perms]
-    
-    cols = st.columns(3)
-    for idx, p in enumerate(perm_strings):
-        with cols[idx % 3]:
-            st.info(f"**{p}**")
+    for idx, pick in enumerate(top_picks):
+        combo = pick["combo"]
+        combo_str = "".join(map(str, combo))
+        score = pick["score"]
+        
+        st.markdown(f"#### Rank #{idx+1} (Score: {score})")
+        st.markdown(f"""
+            <div class="sniper-container">
+                <div class="num-card card-blue"><div class="pos-label">A (1st)</div><div class="pos-digit">{combo[0]}</div></div>
+                <div class="num-card card-green"><div class="pos-label">B (2nd)</div><div class="pos-digit">{combo[1]}</div></div>
+                <div class="num-card card-red"><div class="pos-label">C (3rd)</div><div class="pos-digit">{combo[2]}</div></div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.code(combo_str, language="text")
+        st.divider()
