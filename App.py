@@ -159,3 +159,64 @@ if run_button:
 
 else:
     st.info("👈 Please upload a photo or enter the number in the sidebar and click 'RUN' to get predictions.")
+import google.generativeai as genai
+from PIL import Image
+import pandas as pd
+import json
+import time
+
+# Gemini API Setup
+API_KEY = "YOUR_GEMINI_API_KEY_HERE"
+genai.configure(api_key=API_KEY)
+
+def extract_and_prepare_data(image_path, window_size=50):
+    """
+    Extracts data from image and directly prepares it for FFG.
+    NO hardcoded dates. Dates come 100% from the image.
+    """
+    print("Reading photo...")
+    
+    # 1. Gemini Vision Extraction
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    img = Image.open(image_path)
+    
+    prompt = """
+    Extract the Date and the 3-digit winning number for EVERY row in this image.
+    Return STRICTLY a JSON array of dictionaries with keys "date" and "number".
+    Example: [{"date": "2026-11-05", "number": "451"}]
+    """
+    
+    response = model.generate_content([prompt, img])
+    raw_text = response.text.replace("```json", "").replace("```", "").strip()
+    
+    # This is the REAL data extracted from YOUR photo
+    extracted_data = json.loads(raw_text) 
+    
+    # 2. Data Structuring & Parpaluck
+    df = pd.DataFrame(extracted_data)
+    
+    # Convert to datetime, sort newest to oldest
+    df['date'] = pd.to_datetime(df['date'])
+    df = df.sort_values(by='date', ascending=False).reset_index(drop=True)
+    
+    # Sliding Window (Parpaluck)
+    if len(df) > window_size:
+        ffg_window_df = df.head(window_size).copy()
+    else:
+        ffg_window_df = df.copy()
+        
+    print(f"✅ Extracted {len(df)} real draws from photo.")
+    print(f"✅ Using latest {len(ffg_window_df)} draws for FFG calculation.")
+    
+    return ffg_window_df, df
+
+# --- How to run it ---
+if __name__ == "__main__":
+    # Pass the actual photo path here
+    real_photo_path = "your_real_lottery_slip.jpg" 
+    
+    # It will print the real dates from the photo, not 2023
+    window_df, full_df = extract_and_prepare_data(real_photo_path)
+    
+    print("\n--- Data Ready for FFG (Top 5 Newest) ---")
+    print(window_df.head())
